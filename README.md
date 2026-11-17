@@ -48,3 +48,4 @@ following an offline tiling plan.
   timing measured unoptimised code
 - Learned: -O0 is for debugging; performance must be measured on an optimised build
 - Change: build at -O3
+- (-O3 optimization makes the compiler produce fewer and better-ordered instructions)
