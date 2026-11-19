@@ -15,12 +15,6 @@ following an offline tiling plan.
 - Input and one spilled tensor (t94) are streamed to/from the SD card by DMA:
   62 SD loads and 13 SD stores per inference
 
-## Progress log
-### v0 - first working version
-- Plain C int8 kernels following TFLite reference requantisation
-- Built at -O0 (CubeIDE Debug default)
-- Measured latency: 27,603.23 ms per inference
-
 ## Build
 - STM32CubeIDE, NUCLEO-F401RE
 - Optimization: -O3
@@ -31,10 +25,14 @@ following an offline tiling plan.
 ## How latency is measured
 - The Cortex-M4 DWT cycle counter (DWT->CYCCNT) increases by 1 every CPU clock.
 - At 84 MHz: 84,000,000 cycles per second = 84,000 cycles per millisecond.
-- The counter is read before and after the inference:
+- Each of the 15 layer groups is timed separately:
 
-      cycles     = CYCCNT_end - CYCCNT_start
-      latency_ms = cycles / 84000
+      group_cycles = CYCCNT_end - CYCCNT_start
+
+- The group times are added in 64 bit:
+
+      total_cycles = group_cycles(0) + group_cycles(1) + ... + group_cycles(14)
+      latency_ms   = total_cycles / 84000
 
 - Included: all 54 layers and every SD load/store of the plan.
 - Not included: copying the input image into place before the run.
@@ -42,13 +40,19 @@ following an offline tiling plan.
 
       compute_ms = latency_ms - sd_wait_ms
 
-  ### v0.1 - build fix
+## Progress log
+
+### v0 - first working version
+- Plain C int8 kernels following TFLite reference requantisation
+- Built at -O0 (CubeIDE Debug default)
+- Measured latency: 27,603.23 ms per inference
+
+### v0.1 - build fix
 - Mistake: -O0 means no compiler optimisation (every value goes back to the
   stack after each statement, no inlining, no loop optimisation), so the v0
   timing measured unoptimised code
 - Learned: -O0 is for debugging; performance must be measured on an optimised build
-- Change: build at -O3
-- (-O3 optimization makes the compiler produce fewer and better-ordered instructions)
+- Change: build at -O3 (the compiler produces fewer and better-ordered instructions)
 
 ### v0.2 - latency measurement fix
 - Mistake: v0 timed the whole inference as one 32-bit DWT->CYCCNT difference.
