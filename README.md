@@ -49,3 +49,16 @@ following an offline tiling plan.
 - Learned: -O0 is for debugging; performance must be measured on an optimised build
 - Change: build at -O3
 - (-O3 optimization makes the compiler produce fewer and better-ordered instructions)
+
+### v0.2 - latency measurement fix
+- Mistake: v0 timed the whole inference as one 32-bit DWT->CYCCNT difference.
+  At 84 MHz the counter wraps every 2^32 / 84,000,000 = 51.1 s, so a longer
+  run prints a wrapped, wrong time. The 27,603.23 ms from the -O0 build
+  cannot be trusted.
+- Learned: a 32-bit cycle counter can only time intervals shorter than its
+  wrap period; time smaller pieces and add them in 64 bit.
+- Change: each of the 15 layer groups is timed separately and the group times
+  are added in a 64-bit variable (src/main.c). Also removed the undefined
+  SystemCoreClock line.
+- Result (-O3): 13,527.51 ms per inference, 62 SD loads / 13 SD stores as planned.
+  This is the baseline for the next optimisation steps.
