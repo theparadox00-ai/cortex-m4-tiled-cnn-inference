@@ -24,7 +24,6 @@ static void clock_84mhz(void)
     while (!(RCC->CR & RCC_CR_PLLRDY)) {}
     RCC->CFGR = RCC_CFGR_PPRE1_DIV2 | RCC_CFGR_SW_PLL;
     while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL) {}
-    SystemCoreClock = 84000000u;
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT = 0;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
@@ -74,7 +73,8 @@ static void print_method(void)
 {
     uart_puts("\nHow latency is measured\n");
     uart_puts("  clock      : 84 MHz, DWT->CYCCNT counts every CPU cycle\n");
-    uart_puts("  latency    : CYCCNT after nn_run() - CYCCNT before nn_run(), / 84000 = ms\n");
+    uart_puts("  latency    : sum over groups of (CYCCNT at group end - CYCCNT at group start),\n");
+    uart_puts("               added in 64 bit so the 51.1 s CYCCNT wrap does not matter, / 84000 = ms\n");
     uart_puts("               covers all 54 layers + every SD load/store of the plan\n");
     uart_puts("               input copy B -> A+0 is done before and is NOT included\n");
     uart_puts("  SD wait    : cycles the CPU sat inside sd_stream waiting for a DMA buffer\n");
@@ -132,9 +132,10 @@ int main(void)
         uint32_t copy_cyc = DWT->CYCCNT - c0;
 
         int8_t out = 0;
-        uint32_t t0 = DWT->CYCCNT;
         int r = nn_run(in_sector, &out, 1);
-        uint32_t cyc = DWT->CYCCNT - t0;
+        uint64_t cyc64 = 0;
+        for (int g = 0; g < NN_N_GROUPS; g++) cyc64 += nn_group_cycles(g);
+        uint32_t cyc = cyc64 > 0xFFFFFFFFull ? 0xFFFFFFFFu : (uint32_t)cyc64;
         if (r != NN_OK) {
             uart_puts(r == NN_ERR_SD ? "SD error during inference\n" : "deadlock at layer ");
             if (r != NN_ERR_SD) uart_puti(nn_fail_layer());
@@ -168,9 +169,7 @@ int main(void)
         uart_ms(cyc - wait);
         uart_puts(" ms + SD wait ");
         uart_ms(wait);
-        uart_puts(" ms   (");
-        uart_putu(cyc);
-        uart_puts(" cycles / 84000)\n");
+        uart_puts(" ms   (sum of group cycles / 84000)\n");
         uart_puts("SD loads    : ");
         uart_putu(st.rd_cmds);
         uart_puts(" (plan ");
@@ -209,7 +208,7 @@ int main(void)
             }
         }
         pass += out == exp;
-        sum_ms += cyc / 84000u;
+        sum_ms += (uint32_t)(cyc64 / 84000u);
     }
     uart_puts("\n==== done: match ");
     uart_putu(pass);
